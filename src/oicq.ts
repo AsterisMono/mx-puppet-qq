@@ -94,6 +94,27 @@ export class Oicq {
       eventId: messageId,
     } as IReceiveParams;
   }
+  // 同步消息收信参数
+  public getSyncedMessageSendParams(
+    puppetId: number,
+    fromId: number,
+    toId: number,
+    messageId?: string
+  ): IReceiveParams {
+    return {
+      room: {
+        puppetId,
+        roomId: toId.toString(),
+        isDirect: true,
+      },
+      user: {
+        puppetId,
+        userId: fromId.toString(),
+        // 应该不用加name和avatar url了，Double Puppeting会自动匹配
+      },
+      eventId: messageId,
+    } as IReceiveParams;
+  }
 
   public async newPuppet(puppetId: number, data: IOicqPuppetData) {
     // 初始化Puppet实例
@@ -114,6 +135,12 @@ export class Oicq {
       client.on("message", (e) => {
         this.handleOicqMessage(puppetId, e);
       });
+      client.on("sync.message", (e) => {
+        this.handleSyncedMessage(puppetId, e);
+      });
+      // FIXME：这个是否真的起作用？
+      log.info(`登录Puppet的Remote ID: ${client.uin}`);
+      this.bridge.setUserId(puppetId, client.uin.toString());
     } catch (e) {
       log.error(`登录Puppet: ${data.oicqId} 时发生错误 ${e}`);
     }
@@ -161,6 +188,17 @@ export class Oicq {
         // Deprecated: 都2022年了，还在用讨论组，很弱诶
         break;
     }
+  }
+
+  // 处理从其他客户端同步过来的消息（Double Puppeting）
+  // FIXME: 没有本地SSL环境，这个模块无法测试
+  public async handleSyncedMessage(puppetId: number, e: PrivateMessage) {
+    let sendParams = this.getSyncedMessageSendParams(
+      puppetId,
+      e.from_id,
+      e.to_id
+    );
+    await this.bridge.sendMessage(sendParams, { body: e.toString() });
   }
 
   // 将Matrix接收到的消息送回QQ
