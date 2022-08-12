@@ -1,0 +1,26 @@
+{
+  "name": "mx-puppet-oicq",
+  "version": "0.0.1",
+  "description": "Bridge qq conversations to matrix.",
+  "main": "build/index.js",
+  "author": "AsterisMono",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "build": "tsc",
+    "lint": "tslint --project ./tsconfig.json -t stylish",
+    "start": "yarn build && node ./build/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "command-line-args": "^5.2.1",
+    "command-line-usage": "^6.1.3",
+    "js-yaml": "^4.1.0",
+    "mx-puppet-bridge": "0.1.6",
+    "oicq": "^2.3.1",
+    "tslint": "^5.20.1",
+    "typescript": "^4.7.4"
+  },
+  "devDependencies": {
+    "@types/node": "^18.7.2"
+  }
+}
