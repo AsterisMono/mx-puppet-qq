@@ -166,8 +166,8 @@ export class Oicq {
     puppetId: number,
     e: PrivateMessageEvent | GroupMessageEvent | DiscussMessageEvent
   ) {
-    log.info(`Puppet #${puppetId} 收到消息：`);
-    console.log(e); // FIXME: Log puppet.data.oicqId
+    // log.info(`Puppet #${puppetId} 收到消息：`);
+    // console.log(e); // FIXME: Log puppet.data.oicqId
     switch (e.message_type) {
       case "private":
         // TODO: 支持QQ Emote、图片和文件
@@ -177,7 +177,12 @@ export class Oicq {
           e.message_id
         );
         // 处理消息
-        await parseOicqMessage(e.message, this.bridge, privateSendParams); // FIXME: 可不可以不传Bridge？
+        await parseOicqMessage(
+          e.friend,
+          e.message,
+          this.bridge,
+          privateSendParams
+        ); // FIXME: 可不可以不传Bridge？
         break;
       case "group":
         let groupSendParams = this.getGroupMessageSendParams(
@@ -186,7 +191,12 @@ export class Oicq {
           e.member,
           e.message_id
         );
-        await parseOicqMessage(e.message, this.bridge, groupSendParams);
+        await parseOicqMessage(
+          e.group,
+          e.message,
+          this.bridge,
+          groupSendParams
+        );
         break;
       case "discuss":
         // Deprecated: 都2022年了，还在用讨论组，很弱诶
@@ -253,18 +263,18 @@ export class Oicq {
     data: IFileEvent,
     event: any
   ) {
-    // this is called every time we receive a file from matrix, as we enabled said feature
-
-    // first we check if the puppet exists
     const p = this.puppets[room.puppetId];
     if (!p) {
       return;
     }
-    // usually you'd send it here to the remote protocol via the client object
-    // p.client.sendFile(room.roomId, data.url);
-    // we just echo this back
-    // const params = this.getSendParams(room.puppetId, room.roomId);
-    // await this.bridge.sendFileDetect(params, data.url, data.filename);
+
+    // 检查是私聊还是群聊，这两个文件处理的方式不一样
+    const isDirect = isPrivateChat(room.roomId);
+    if (isDirect) {
+      // 私聊，获取好友对象再发送
+      let f = p.client.pickFriend(getOicqIdFromRoomId(room.roomId));
+      // f.sendFile();
+    }
   }
 
   public async createRoom(room: IRemoteRoom): Promise<IRemoteRoom | null> {
