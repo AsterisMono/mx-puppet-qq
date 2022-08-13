@@ -52,7 +52,7 @@ if (options.help) {
 const protocol: IProtocolInformation = {
   features: {
     image: true, // 支持发送图片
-    file: false, // 支持发送文件
+    file: true, // 支持发送文件
     presence: false, // 支持用户在线状态
   },
   id: "oicq", // 协议ID（全小写）

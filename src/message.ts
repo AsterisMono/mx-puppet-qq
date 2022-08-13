@@ -25,7 +25,7 @@ export async function parseOicqMessage(
         });
         break;
       case "image":
-        await bridge.sendImage(sendParams, message.url as string); // FIXME: 处理其他情况
+        await bridge.sendImage(sendParams, message.url as string, "image"); // FIXME: 处理其他情况
         break;
       case "file":
         if (source instanceof Friend) {
@@ -44,7 +44,7 @@ export async function parseOicqMessage(
         break;
       default:
         await bridge.sendMessage(sendParams, {
-          body: message.toString(),
+          body: "暂不支持的消息",
         });
         break;
     }

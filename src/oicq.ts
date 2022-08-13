@@ -23,7 +23,7 @@ import {
   Sendable,
 } from "oicq";
 import { parseOicqMessage } from "./message";
-import { getOicqIdFromRoomId, isPrivateChat } from "./utils";
+import { downloadTempFile, getOicqIdFromRoomId, isPrivateChat } from "./utils";
 
 const log = new Log("oicqPuppet:oicq");
 
@@ -270,10 +270,16 @@ export class Oicq {
 
     // 检查是私聊还是群聊，这两个文件处理的方式不一样
     const isDirect = isPrivateChat(room.roomId);
+    // 下载临时文件
+    const path = await downloadTempFile(data.url, data.filename); // TODO: Exception
     if (isDirect) {
       // 私聊，获取好友对象再发送
       let f = p.client.pickFriend(getOicqIdFromRoomId(room.roomId));
-      // f.sendFile();
+      await f.sendFile(path, data.filename); // TODO: Exception
+    } else {
+      // 上传群文件
+      let g = p.client.pickGroup(getOicqIdFromRoomId(room.roomId));
+      await g.fs.upload(path, undefined, data.filename); // TODO: Exception, 指定gfs路径
     }
   }
 
