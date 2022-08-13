@@ -51,7 +51,7 @@ if (options.help) {
 // 重要：这里是我们实现协议的定义，包括协议支持的功能、协议ID和仓库URL等
 const protocol: IProtocolInformation = {
   features: {
-    image: false, // 支持发送图片
+    image: true, // 支持发送图片
     file: false, // 支持发送文件
     presence: false, // 支持用户在线状态
   },
@@ -98,7 +98,7 @@ async function run() {
   // 可选功能：发送文件
   puppet.on("file", oicq.handleMatrixFile.bind(oicq));
   // 可选功能：发送图片
-  // puppet.on("image", oicq.handleMatrixImage.bind(oicq));
+  puppet.on("image", oicq.handleMatrixImage.bind(oicq));
   // 可选功能：发起会话 (在Matrix一方发起私聊时需要)
   puppet.setCreateRoomHook(oicq.createRoom.bind(oicq));
   // 可选功能: get DM room ID hook (在Matrix一方发起私聊时需要)

@@ -19,7 +19,11 @@ import {
   Member,
   PrivateMessage,
   PrivateMessageEvent,
+  segment,
+  Sendable,
 } from "oicq";
+import { parseOicqMessage } from "./message";
+import { getOicqIdFromRoomId, isPrivateChat } from "./utils";
 
 const log = new Log("oicqPuppet:oicq");
 
@@ -54,10 +58,9 @@ export class Oicq {
   ): IReceiveParams {
     return {
       room: {
-        // roomId: 远端房间ID，这里是私聊，直接使用QQ号
-        // FIXME：会不会存在QQ号和群号重复的情况？
         puppetId,
-        roomId: friend.user_id.toString(),
+        // 私聊的roomId是qq号前加p
+        roomId: `p${friend.user_id.toString()}`,
         isDirect: true,
       },
       user: {
@@ -80,7 +83,8 @@ export class Oicq {
     return {
       room: {
         puppetId,
-        roomId: group.group_id.toString(),
+        // 群聊的roomId是群号前加g
+        roomId: `g${group.group_id.toString()}`,
         isDirect: false,
         name: group.name,
         avatarUrl: group.getAvatarUrl(),
@@ -104,7 +108,7 @@ export class Oicq {
     return {
       room: {
         puppetId,
-        roomId: toId.toString(),
+        roomId: `p${toId.toString()}`,
         isDirect: true,
       },
       user: {
@@ -162,7 +166,8 @@ export class Oicq {
     puppetId: number,
     e: PrivateMessageEvent | GroupMessageEvent | DiscussMessageEvent
   ) {
-    log.info(`Puppet #${puppetId} 收到消息：${e}`); // FIXME: Log puppet.data.oicqId
+    log.info(`Puppet #${puppetId} 收到消息：`);
+    console.log(e); // FIXME: Log puppet.data.oicqId
     switch (e.message_type) {
       case "private":
         // TODO: 支持QQ Emote、图片和文件
@@ -171,9 +176,8 @@ export class Oicq {
           e.friend,
           e.message_id
         );
-        await this.bridge.sendMessage(privateSendParams, {
-          body: e.toString(),
-        });
+        // 处理消息
+        await parseOicqMessage(e.message, this.bridge, privateSendParams); // FIXME: 可不可以不传Bridge？
         break;
       case "group":
         let groupSendParams = this.getGroupMessageSendParams(
@@ -182,7 +186,7 @@ export class Oicq {
           e.member,
           e.message_id
         );
-        await this.bridge.sendMessage(groupSendParams, { body: e.toString() });
+        await parseOicqMessage(e.message, this.bridge, groupSendParams);
         break;
       case "discuss":
         // Deprecated: 都2022年了，还在用讨论组，很弱诶
@@ -211,11 +215,37 @@ export class Oicq {
     if (!p) {
       return;
     }
-    // 获取好友
-    let f = p.client.pickFriend(parseInt(room.roomId));
-    // 发送消息并处理异常情况
-    // TODO: Handle Exceptions
-    await f.sendMsg(data.body);
+    await this.sendConstructedOicqMessage(p.client, room.roomId, data.body);
+  }
+
+  public async handleMatrixImage(
+    room: IRemoteRoom,
+    data: IFileEvent,
+    event: any
+  ) {
+    const p = this.puppets[room.puppetId];
+    if (!p) {
+      return;
+    }
+    // 构造消息体
+    const message = [segment.image(data.url)];
+
+    await this.sendConstructedOicqMessage(p.client, room.roomId, message);
+  }
+
+  public async sendConstructedOicqMessage(
+    client: Client,
+    remoteRoomId: string,
+    msg: Sendable
+  ) {
+    const isDirect = isPrivateChat(remoteRoomId);
+    if (isDirect) {
+      let f = client.pickFriend(getOicqIdFromRoomId(remoteRoomId));
+      await f.sendMsg(msg);
+    } else {
+      let g = client.pickGroup(getOicqIdFromRoomId(remoteRoomId));
+      await g.sendMsg(msg);
+    }
   }
 
   public async handleMatrixFile(
