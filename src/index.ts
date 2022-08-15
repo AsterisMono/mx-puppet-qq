@@ -113,7 +113,7 @@ async function run() {
     if (!str) {
       return {
         success: false,
-        error: `使用方法: link <qq号> <link密码>`,
+        error: `使用方法: link <qq号> <连接密码>`,
       };
     }
     log.info(str);
@@ -137,7 +137,7 @@ async function run() {
     } catch (e) {
       return {
         success: false,
-        error: "QQ号未正确配置或link密码不正确！",
+        error: "QQ号未正确配置或连接密码不正确！",
       };
     }
   });

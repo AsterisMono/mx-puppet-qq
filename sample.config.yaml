@@ -27,10 +27,10 @@ provisioning:
     #- ".*"
   # Regex of Matrix IDs forbidden from using the puppet bridge
   #blacklist:
-    # Disallow a specific user
-    #- "@user:server\\.com"
-    # Disallow users on a specific homeserver
-    #- "@.*:yourserver\\.com"
+  # Disallow a specific user
+  #- "@user:server\\.com"
+  # Disallow users on a specific homeserver
+  #- "@.*:yourserver\\.com"
 
 database:
   # Use Postgres as a database backend
@@ -69,3 +69,11 @@ logging:
       # number of bytes, or units of kb, mb, and gb. If using the units, add
       # 'k', 'm', or 'g' as the suffix
       maxSize: 50m
+
+oicq:
+  QQ号1:
+    password: QQ密码
+    password_link: 连接密码
+  QQ号2:
+    password: QQ密码
+    password_link: 连接密码

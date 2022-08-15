@@ -35,6 +35,7 @@
 
 - [X] 支持在线登入（link 指令）
   - [X] 支持密码登录
+  - [X] 支持多账号
   - [ ] 支持 QR 码登录
 - [X] 断线提示
 - [X] 保存凭据并自动断线重连
@@ -52,6 +53,7 @@
    1. 将 `sample.config.yaml`复制为 `config.yaml`。
    2. 修改 Homeserver 相关信息（域名、URL）
    3. 修改 `provisioning.whitelist`，允许用户使用 Bridge。
+   4. 修改 `oicq`段落，填充QQ号、QQ密码，并为每个账号设定一个连接密码。
 4. 运行 `yarn start -r`生成配置文件 `oicq-registration.yaml`，复制它的路径备用。
 5. 找到 Synapse 的配置文件 `homeserver.yaml`，加入下面的条目：
 
@@ -71,9 +73,7 @@
 
 ## 使用
 
-启动服务后，联络 `@_qq_bot:yourdomain.com`，输入 `link QQ 号 密码`进行帐号登录。
-
-> **Warning**：Ticket 登录流程**没有经过测试**。如果登录异常，请检查控制台输出。
+启动服务后，联络 `@_qq_bot:yourdomain.com`，输入 `link QQ 号 连接密码`进行帐号登录。
 
 ## 加入开发
 
