@@ -1,5 +1,4 @@
 import { createWriteStream, existsSync, mkdirSync } from "fs";
-import { IRemoteRoom } from "mx-puppet-bridge";
 import fetch from "node-fetch";
 import { resolve as resolvePath } from "path";
 export function isPrivateChat(remoteRoomId: string): boolean {

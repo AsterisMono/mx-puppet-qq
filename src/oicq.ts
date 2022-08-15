@@ -1,6 +1,4 @@
 // first we import a few needed things again
-import { kMaxLength } from "buffer";
-import { time } from "console";
 import {
   PuppetBridge,
   IRemoteUser,
@@ -17,10 +15,8 @@ import {
   Friend,
   FriendRecallEvent,
   Group,
-  GroupMessage,
   GroupMessageEvent,
   Member,
-  MessageRet,
   PrivateMessage,
   PrivateMessageEvent,
   segment,
