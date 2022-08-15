@@ -1,4 +1,3 @@
-// first we import a few needed things again
 import {
   PuppetBridge,
   IRemoteUser,
@@ -16,6 +15,7 @@ import {
   FriendRecallEvent,
   Group,
   GroupMessageEvent,
+  GroupRecallEvent,
   Member,
   PrivateMessage,
   PrivateMessageEvent,
@@ -26,6 +26,7 @@ import { parseOicqMessage } from "./message";
 import {
   debounce,
   downloadTempFile,
+  getGroupOwner,
   getOicqIdFromRoomId,
   isPrivateChat,
   makeid,
@@ -152,6 +153,9 @@ export class Oicq {
       client.on("notice.friend.recall", (e) => {
         this.handleFriendRedactedMessage(puppetId, e);
       });
+      client.on("notice.group.recall", (e) => {
+        this.handleGroupRedactedMessage(puppetId, e);
+      });
       // FIXME：这个是否真的起作用？
       log.info(`登录Puppet的Remote ID: ${client.uin}`);
       this.bridge.setUserId(puppetId, client.uin.toString());
@@ -183,7 +187,7 @@ export class Oicq {
     switch (e.message_type) {
       case "private":
         // TODO: 支持QQ Emote、图片和文件
-        let privateSendParams = this.getPrivateMessageSendParams(
+        const privateSendParams = this.getPrivateMessageSendParams(
           puppetId,
           e.friend,
           e.message_id
@@ -197,7 +201,7 @@ export class Oicq {
         );
         break;
       case "group":
-        let groupSendParams = this.getGroupMessageSendParams(
+        const groupSendParams = this.getGroupMessageSendParams(
           puppetId,
           e.group,
           e.member,
@@ -219,7 +223,7 @@ export class Oicq {
   // 处理从其他客户端同步过来的消息（Double Puppeting）
   // TODO: 没有本地SSL环境，这个模块无法测试
   public async handleSyncedMessage(puppetId: number, e: PrivateMessage) {
-    let sendParams = this.getSyncedMessageSendParams(
+    const sendParams = this.getSyncedMessageSendParams(
       puppetId,
       e.from_id,
       e.to_id
@@ -231,15 +235,20 @@ export class Oicq {
     puppetId: number,
     e: FriendRecallEvent
   ) {
-    if (debug) {
-      log.info("收到撤回消息：");
-      console.log(e);
-    }
     // 获取发送参数
-    let sendParams = this.getPrivateMessageSendParams(puppetId, e.friend);
+    const sendParams = this.getPrivateMessageSendParams(puppetId, e.friend);
     // 我觉得大家都不喜欢撤回
     // 所以这里使用Reaction做一个记号，就不真撤回了，没必要.jpg
-    await this.bridge.sendReaction(sendParams, e.message_id, "撤回"); // FIXME: 使用表情Reaction
+    await this.bridge.sendReaction(sendParams, e.message_id, "已撤回"); // FIXME: 使用表情Reaction
+  }
+
+  public async handleGroupRedactedMessage(
+    puppetId: number,
+    e: GroupRecallEvent
+  ) {
+    const owner = (await getGroupOwner(e.group)) as Member; // TODO: 使用原始身份撤回
+    const sendParams = this.getGroupMessageSendParams(puppetId, e.group, owner);
+    await this.bridge.sendReaction(sendParams, e.message_id, "已撤回"); // FIXME: 使用表情Reaction
   }
 
   // 将Matrix接收到的消息送回QQ
@@ -352,26 +361,20 @@ export class Oicq {
     } else {
       // 是群聊信息，Reaction可以使用群主身份发送
       const g = p.client.pickGroup(getOicqIdFromRoomId(roomId));
-      for (let [k, v] of await g.getMemberMap()) {
-        if (g.pickMember(k).is_admin) {
-          let groupAdmin = g.pickMember(k);
-          const sendParams = this.getGroupMessageSendParams(
-            room.puppetId,
-            g,
-            groupAdmin
-          );
-          if (exclusive) {
-            await this.bridge.removeAllReactions(sendParams, remoteEventId);
-          }
-          await this.bridge.sendReaction(
-            sendParams,
-            remoteEventId,
-            reaction // FIXME: 使用表情Reaction
-          );
-          return;
-        }
+      const owner = (await getGroupOwner(g)) as Member;
+      const sendParams = this.getGroupMessageSendParams(
+        room.puppetId,
+        g,
+        owner
+      );
+      if (exclusive) {
+        await this.bridge.removeAllReactions(sendParams, remoteEventId);
       }
-      log.error(`发生了了不得的错误！看起来群${g.group_id}没有群主...`);
+      await this.bridge.sendReaction(
+        sendParams,
+        remoteEventId,
+        reaction // FIXME: 使用表情Reaction
+      );
     }
   }
 

@@ -1,6 +1,11 @@
 import { createWriteStream, existsSync, mkdirSync } from "fs";
+import { Log } from "mx-puppet-bridge";
 import fetch from "node-fetch";
+import { Group, Member } from "oicq";
 import { resolve as resolvePath } from "path";
+
+const log = new Log("oicqPuppet:util");
+
 export function isPrivateChat(remoteRoomId: string): boolean {
   return remoteRoomId.startsWith("p");
 }
@@ -57,4 +62,13 @@ export function debounce(fun, delay) {
       fun.apply(context, args);
     }, delay); // 设定定时器 判断是否已经触发 ，如果触发则重新计时 等待dely毫秒再执行
   };
+}
+
+export async function getGroupOwner(g: Group): Promise<Member | undefined> {
+  for (let [k, v] of await g.getMemberMap()) {
+    if (g.pickMember(k).is_admin) {
+      return g.pickMember(k);
+    }
+  }
+  log.error(`发生了了不得的错误！看起来群${g.group_id}没有群主...`);
 }
