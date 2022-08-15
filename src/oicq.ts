@@ -210,19 +210,15 @@ export class Oicq {
     }
     switch (e.message_type) {
       case "private":
-        // TODO: 支持QQ Emote、图片和文件
+        // TODO: 支持QQ Emote
+        // TODO: 重构-使用AdaptiveSendParam
         const privateSendParams = this.getPrivateMessageSendParams(
           puppetId,
           e.friend,
           e.message_id
         );
         // 处理消息
-        await parseOicqMessage(
-          e.friend,
-          e.message,
-          this.bridge,
-          privateSendParams
-        );
+        await parseOicqMessage(e, this.bridge, privateSendParams);
         break;
       case "group":
         const groupSendParams = this.getGroupMessageSendParams(
@@ -231,12 +227,7 @@ export class Oicq {
           e.member,
           e.message_id
         );
-        await parseOicqMessage(
-          e.group,
-          e.message,
-          this.bridge,
-          groupSendParams
-        );
+        await parseOicqMessage(e, this.bridge, groupSendParams);
         break;
       case "discuss":
         // Deprecated: 都2022年了，还在用讨论组，很弱诶

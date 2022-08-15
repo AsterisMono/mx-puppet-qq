@@ -1,34 +1,36 @@
-import {
-  IMessageEvent,
-  IReceiveParams,
-  Log,
-  PuppetBridge,
-} from "mx-puppet-bridge";
-import { Friend, Group, MessageElem } from "oicq";
-import { text } from "stream/consumers";
+import { IReceiveParams, Log, PuppetBridge } from "mx-puppet-bridge";
+import { GroupMessageEvent, PrivateMessageEvent } from "oicq";
 
 const log = new Log("oicqPuppet:messageParser");
 
 // TODO: QQ消息格式处理
 export async function parseOicqMessage(
-  source: Friend | Group,
-  messageChain: MessageElem[],
+  messageEvent: PrivateMessageEvent | GroupMessageEvent,
   bridge: PuppetBridge,
   sendParams: IReceiveParams
 ) {
-  // log.info("接收到的消息类型：" + sendParams.room.isDirect ? "私聊" : "群");
+  const messageChain = messageEvent.message;
+  const source = (messageEvent as PrivateMessageEvent).friend || undefined;
+  // 处理回复
+  console.log(messageEvent);
+  if (messageEvent.source) {
+    // TODO: 重新设计remoteEventId，使用rand和seq
+  }
+  let buffer = "";
   for (let message of messageChain) {
     switch (message.type) {
       case "text":
+        buffer = buffer.concat(message.text);
         await bridge.sendMessage(sendParams, {
-          body: message.text,
+          body: buffer,
         });
+        buffer = "";
         break;
       case "image":
         await bridge.sendImage(sendParams, message.url as string, "image");
         break;
       case "file":
-        if (source instanceof Friend) {
+        if (sendParams.room.isDirect) {
           await bridge.sendFile(
             sendParams,
             await source.getFileUrl(message.fid),
@@ -41,6 +43,9 @@ export async function parseOicqMessage(
             body: `上传了新的群文件：${message.name}`,
           });
         }
+        break;
+      case "at":
+        buffer = buffer.concat(message.text as string);
         break;
       default:
         await bridge.sendMessage(sendParams, {
