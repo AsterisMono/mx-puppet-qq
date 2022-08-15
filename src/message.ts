@@ -1,5 +1,6 @@
 import { IReceiveParams, Log, PuppetBridge } from "mx-puppet-bridge";
-import { GroupMessageEvent, PrivateMessageEvent } from "oicq";
+import { GroupMessageEvent, parseDmMessageId, PrivateMessageEvent } from "oicq";
+import { genDmMessageId } from "oicq/lib/message";
 
 const log = new Log("oicqPuppet:messageParser");
 
@@ -12,9 +13,25 @@ export async function parseOicqMessage(
   const messageChain = messageEvent.message;
   const source = (messageEvent as PrivateMessageEvent).friend || undefined;
   // 处理回复
-  console.log(messageEvent);
+  let targetRemoteEventId: string | undefined = undefined;
   if (messageEvent.source) {
-    // TODO: 重新设计remoteEventId，使用rand和seq
+    const src = messageEvent.source;
+    targetRemoteEventId = genDmMessageId(
+      src.user_id,
+      src.seq,
+      src.rand,
+      src.time
+    ); // 这个Message里的seq是对不上的，要报给上游
+    // console.log(
+    //   `${sendParams.room.puppetId}, ${sendParams.room.roomId}, ${targetRemoteEventId}`
+    // );
+    // console.log(
+    //   await bridge.eventStore.getMatrix(
+    //     sendParams.room.puppetId,
+    //     sendParams.room.roomId,
+    //     targetRemoteEventId
+    //   )
+    // );
   }
   let buffer = "";
   for (let message of messageChain) {

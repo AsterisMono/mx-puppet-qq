@@ -17,6 +17,7 @@ import {
   GroupMessageEvent,
   GroupRecallEvent,
   Member,
+  Platform,
   PrivateMessage,
   PrivateMessageEvent,
   segment,
@@ -135,7 +136,7 @@ export class Oicq {
       await this.deletePuppet(puppetId);
     }
     // 创建客户端
-    const client = createClient(data.oicqId);
+    const client = createClient(data.oicqId, { platform: Platform.iPad });
     this.puppets[puppetId] = {
       client,
       data,
