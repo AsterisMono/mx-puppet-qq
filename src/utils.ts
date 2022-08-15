@@ -1,4 +1,5 @@
 import { createWriteStream, existsSync, mkdirSync } from "fs";
+import { IRemoteRoom } from "mx-puppet-bridge";
 import fetch from "node-fetch";
 import { resolve as resolvePath } from "path";
 export function isPrivateChat(remoteRoomId: string): boolean {
@@ -30,4 +31,31 @@ export async function downloadTempFile(
       });
     });
   });
+}
+
+export function makeid(length: number) {
+  var result = "";
+  var characters =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  var charactersLength = characters.length;
+  for (var i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * charactersLength));
+  }
+  return result;
+}
+export function timeout(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function debounce(fun, delay) {
+  //fun 需要去抖动的方法，delay 指定的延迟时间
+  var timer; // 用闭包维护一个timer 做为定时器标识
+  return function () {
+    var context = this; // 调用debounce的时候 保存执行上下文
+    var args = arguments;
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      fun.apply(context, args);
+    }, delay); // 设定定时器 判断是否已经触发 ，如果触发则重新计时 等待dely毫秒再执行
+  };
 }

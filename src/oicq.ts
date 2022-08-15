@@ -1,4 +1,6 @@
 // first we import a few needed things again
+import { kMaxLength } from "buffer";
+import { time } from "console";
 import {
   PuppetBridge,
   IRemoteUser,
@@ -13,20 +15,29 @@ import {
   createClient,
   DiscussMessageEvent,
   Friend,
+  FriendRecallEvent,
   Group,
   GroupMessage,
   GroupMessageEvent,
   Member,
+  MessageRet,
   PrivateMessage,
   PrivateMessageEvent,
   segment,
   Sendable,
 } from "oicq";
 import { parseOicqMessage } from "./message";
-import { downloadTempFile, getOicqIdFromRoomId, isPrivateChat } from "./utils";
+import {
+  debounce,
+  downloadTempFile,
+  getOicqIdFromRoomId,
+  isPrivateChat,
+  makeid,
+  timeout,
+} from "./utils";
 
 const log = new Log("oicqPuppet:oicq");
-
+const debug = false;
 interface IOicqPuppet {
   client: Client;
   data: IOicqPuppetData;
@@ -142,6 +153,9 @@ export class Oicq {
       client.on("sync.message", (e) => {
         this.handleSyncedMessage(puppetId, e);
       });
+      client.on("notice.friend.recall", (e) => {
+        this.handleFriendRedactedMessage(puppetId, e);
+      });
       // FIXME：这个是否真的起作用？
       log.info(`登录Puppet的Remote ID: ${client.uin}`);
       this.bridge.setUserId(puppetId, client.uin.toString());
@@ -166,8 +180,10 @@ export class Oicq {
     puppetId: number,
     e: PrivateMessageEvent | GroupMessageEvent | DiscussMessageEvent
   ) {
-    // log.info(`Puppet #${puppetId} 收到消息：`);
-    // console.log(e); // FIXME: Log puppet.data.oicqId
+    if (debug) {
+      log.info(`Puppet #${puppetId} 收到消息：`);
+      console.log(e);
+    }
     switch (e.message_type) {
       case "private":
         // TODO: 支持QQ Emote、图片和文件
@@ -182,7 +198,7 @@ export class Oicq {
           e.message,
           this.bridge,
           privateSendParams
-        ); // FIXME: 可不可以不传Bridge？
+        );
         break;
       case "group":
         let groupSendParams = this.getGroupMessageSendParams(
@@ -205,14 +221,29 @@ export class Oicq {
   }
 
   // 处理从其他客户端同步过来的消息（Double Puppeting）
-  // FIXME: 没有本地SSL环境，这个模块无法测试
+  // TODO: 没有本地SSL环境，这个模块无法测试
   public async handleSyncedMessage(puppetId: number, e: PrivateMessage) {
     let sendParams = this.getSyncedMessageSendParams(
       puppetId,
       e.from_id,
       e.to_id
     );
-    await this.bridge.sendMessage(sendParams, { body: e.toString() });
+    await this.bridge.sendMessage(sendParams, { body: e.toString() }); // TODO: use deliverOicqMessage
+  }
+
+  public async handleFriendRedactedMessage(
+    puppetId: number,
+    e: FriendRecallEvent
+  ) {
+    if (debug) {
+      log.info("收到撤回消息：");
+      console.log(e);
+    }
+    // 获取发送参数
+    let sendParams = this.getPrivateMessageSendParams(puppetId, e.friend);
+    // 我觉得大家都不喜欢撤回
+    // 所以这里使用Reaction做一个记号，就不真撤回了，没必要.jpg
+    await this.bridge.sendReaction(sendParams, e.message_id, "撤回"); // FIXME: 使用表情Reaction
   }
 
   // 将Matrix接收到的消息送回QQ
@@ -225,7 +256,10 @@ export class Oicq {
     if (!p) {
       return;
     }
-    await this.sendConstructedOicqMessage(p.client, room.roomId, data.body);
+
+    const message = data.body;
+
+    this.deliverOicqMessage(room, data.eventId as string, message);
   }
 
   public async handleMatrixImage(
@@ -240,21 +274,108 @@ export class Oicq {
     // 构造消息体
     const message = [segment.image(data.url)];
 
-    await this.sendConstructedOicqMessage(p.client, room.roomId, message);
+    this.deliverOicqMessage(room, data.eventId as string, message);
+  }
+
+  // Deliver方法会处理消息发送的全过程（发送、异常处理、事件插入），而不仅是发送本身。
+  // 发送方法本体参见sendConstructedOicqMessage。
+  public async deliverOicqMessage(
+    remoteRoom: IRemoteRoom,
+    matrixEventId: string,
+    msg: Sendable
+  ) {
+    const remoteEventId = await this.sendConstructedOicqMessage(
+      this.getOicqClientByRoom(remoteRoom),
+      remoteRoom.roomId,
+      msg
+    );
+    // 插入事件到存储，方便后续Reply和Reactions
+    await this.bridge.eventStore.insert(
+      remoteRoom.puppetId,
+      remoteRoom.roomId,
+      matrixEventId,
+      remoteEventId
+    );
+    if (remoteEventId.startsWith("err")) {
+      // 消息发送失败，打个标记
+      await this.markMessage(remoteRoom, remoteEventId, "发送失败");
+    }
   }
 
   public async sendConstructedOicqMessage(
     client: Client,
     remoteRoomId: string,
     msg: Sendable
+  ): Promise<string> {
+    try {
+      const isDirect = isPrivateChat(remoteRoomId);
+      if (isDirect) {
+        let f = client.pickFriend(getOicqIdFromRoomId(remoteRoomId));
+        return (await f.sendMsg(msg)).message_id;
+      } else {
+        let g = client.pickGroup(getOicqIdFromRoomId(remoteRoomId));
+        return (await g.sendMsg(msg)).message_id;
+      }
+    } catch (e) {
+      // 由于消息发送失败，没有remoteId可以用
+      // 所以生成一个ID供Reaction使用
+      return `err${makeid(16)}`;
+    }
+  }
+
+  public async markMessage(
+    room: IRemoteRoom,
+    remoteEventId: string,
+    reaction: string,
+    exclusive = false
   ) {
-    const isDirect = isPrivateChat(remoteRoomId);
+    if (!remoteEventId) {
+      log.error("错误：在处理错误的过程中找不到EventID");
+      return;
+    }
+    const p = this.puppets[room.puppetId];
+    if (!p) {
+      log.error(
+        "发生了了不得的错误！@markMatrixMessageFailedToDeliver:Puppet不存在"
+      );
+      return;
+    }
+    // 从room中提取上下文
+    const roomId = room.roomId;
+    const isDirect = isPrivateChat(roomId);
     if (isDirect) {
-      let f = client.pickFriend(getOicqIdFromRoomId(remoteRoomId));
-      await f.sendMsg(msg);
+      // 是私聊信息，Reaction可以使用对方的身份发送
+      const f = p.client.pickFriend(getOicqIdFromRoomId(roomId));
+      const sendParams = this.getPrivateMessageSendParams(room.puppetId, f);
+      if (exclusive) {
+        await this.bridge.removeAllReactions(sendParams, remoteEventId);
+      }
+      // 需要注意的是！发送Reaction的eventId是RemoteEventId，不是MatrixEventId！！！
+      await this.bridge.sendReaction(sendParams, remoteEventId, reaction); // FIXME: 使用表情Reaction
+      return;
     } else {
-      let g = client.pickGroup(getOicqIdFromRoomId(remoteRoomId));
-      await g.sendMsg(msg);
+      // 是群聊信息，Reaction可以使用群主身份发送
+      const g = p.client.pickGroup(getOicqIdFromRoomId(roomId));
+      for (let [k, v] of await g.getMemberMap()) {
+        if (g.pickMember(k).is_admin) {
+          let groupAdmin = g.pickMember(k);
+          const sendParams = this.getGroupMessageSendParams(
+            room.puppetId,
+            g,
+            groupAdmin
+          );
+          if (exclusive) {
+            await this.bridge.removeAllReactions(sendParams, remoteEventId);
+          }
+          await this.bridge.sendReaction(
+            sendParams,
+            remoteEventId,
+            reaction // FIXME: 使用表情Reaction
+          );
+          return;
+        }
+      }
+      log.error(`发生了了不得的错误！看起来群${g.group_id}没有群主...`);
     }
   }
 
@@ -267,19 +388,55 @@ export class Oicq {
     if (!p) {
       return;
     }
-
-    // 检查是私聊还是群聊，这两个文件处理的方式不一样
-    const isDirect = isPrivateChat(room.roomId);
     // 下载临时文件
-    const path = await downloadTempFile(data.url, data.filename); // TODO: Exception
-    if (isDirect) {
-      // 私聊，获取好友对象再发送
-      let f = p.client.pickFriend(getOicqIdFromRoomId(room.roomId));
-      await f.sendFile(path, data.filename); // TODO: Exception
-    } else {
-      // 上传群文件
-      let g = p.client.pickGroup(getOicqIdFromRoomId(room.roomId));
-      await g.fs.upload(path, undefined, data.filename); // TODO: Exception, 指定gfs路径
+    const path = await downloadTempFile(data.url, data.filename);
+    this.deliverOicqFile(room, data.eventId as string, path, data.filename);
+  }
+
+  public updateFileProgress(
+    room: IRemoteRoom,
+    remoteEventId: string,
+    percentage: string
+  ) {
+    let reaction = `上传${percentage.split(".")[0]}%`;
+    this.markMessage(room, remoteEventId, reaction, true);
+  }
+
+  public async deliverOicqFile(
+    room: IRemoteRoom,
+    matrixEventId: string,
+    path: string,
+    filename: string
+  ) {
+    // 生成一个ID（这里提前生成，不使用oicq的文件id，方便进度更新的回调）
+    // TODO: 代价是失去了撤回文件的能力！可以设置一个map将此id与file_id对应起来
+    const remoteEventId = `pf${makeid(16)}`;
+
+    await this.bridge.eventStore.insert(
+      room.puppetId,
+      room.roomId,
+      matrixEventId,
+      remoteEventId
+    );
+    const progressCb = (percentage: string) => {
+      this.updateFileProgress(room, remoteEventId, percentage);
+    };
+    const debounced = debounce(progressCb, 200);
+    const client = this.getOicqClientByRoom(room);
+
+    try {
+      if (isPrivateChat(room.roomId)) {
+        const f = client.pickFriend(getOicqIdFromRoomId(room.roomId));
+        await f.sendFile(path, filename, debounced);
+      } else {
+        const g = client.pickGroup(getOicqIdFromRoomId(room.roomId));
+        await g.fs.upload(path, undefined, filename, debounced);
+      }
+      timeout(500); // 防止进度标记干扰
+      this.markMessage(room, remoteEventId, `发送完毕`, true);
+    } catch (e) {
+      timeout(500);
+      this.markMessage(room, remoteEventId, `发送失败`, true);
     }
   }
 
@@ -312,5 +469,20 @@ export class Oicq {
 
     // now we just return the userId of the ghost
     return user.userId;
+  }
+  // Util
+  getOicqClientByRoom(room: IRemoteRoom): Client {
+    return this.puppets[room.puppetId]?.client;
+  }
+  getFriendByRoom(room: IRemoteRoom): Friend | undefined {
+    const isDirect = isPrivateChat(room.roomId);
+    if (isDirect) {
+      return this.getOicqClientByRoom(room).pickFriend(
+        getOicqIdFromRoomId(room.roomId)
+      );
+    } else {
+      log.error("对非私聊使用getFriendByRoom");
+      return;
+    }
   }
 }
