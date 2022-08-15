@@ -255,6 +255,7 @@ export class Oicq {
     await this.bridge.sendMessage(sendParams, { body: e.toString() }); // TODO: use deliverOicqMessage
   }
 
+  // TODO: 重构，合并两个撤回方法
   public async handleFriendRedactedMessage(
     puppetId: number,
     e: FriendRecallEvent
@@ -322,18 +323,10 @@ export class Oicq {
       matrixEventId,
       remoteEventId
     );
-    const sendParams = isPrivateChat(remoteRoom.roomId)
-      ? this.getPrivateMessageSendParams(
-          remoteRoom.puppetId,
-          target as Friend,
-          remoteEventId
-        )
-      : this.getGroupMessageSendParams(
-          remoteRoom.puppetId,
-          target as Group,
-          (await getGroupOwner(target as Group)) as Member,
-          remoteEventId
-        );
+    const sendParams = await this.getAdaptiveSendParams(
+      remoteRoom,
+      remoteEventId
+    );
     // 已阅标记代表已发送
     this.bridge.sendReadReceipt(sendParams);
 
@@ -373,37 +366,12 @@ export class Oicq {
       );
       return;
     }
-    // 从room中提取上下文
-    const roomId = room.roomId;
-    const isDirect = isPrivateChat(roomId);
-    if (isDirect) {
-      // 是私聊信息，Reaction可以使用对方的身份发送
-      const f = p.client.pickFriend(getOicqIdFromRoomId(roomId));
-      const sendParams = this.getPrivateMessageSendParams(room.puppetId, f);
-      if (exclusive) {
-        await this.bridge.removeAllReactions(sendParams, remoteEventId);
-      }
-      // 需要注意的是！发送Reaction的eventId是RemoteEventId，不是MatrixEventId！！！
-      await this.bridge.sendReaction(sendParams, remoteEventId, reaction); // FIXME: 使用表情Reaction
-      return;
-    } else {
-      // 是群聊信息，Reaction可以使用群主身份发送
-      const g = p.client.pickGroup(getOicqIdFromRoomId(roomId));
-      const owner = (await getGroupOwner(g)) as Member;
-      const sendParams = this.getGroupMessageSendParams(
-        room.puppetId,
-        g,
-        owner
-      );
-      if (exclusive) {
-        await this.bridge.removeAllReactions(sendParams, remoteEventId);
-      }
-      await this.bridge.sendReaction(
-        sendParams,
-        remoteEventId,
-        reaction // FIXME: 使用表情Reaction
-      );
+    // 已重构
+    const sendParams = await this.getAdaptiveSendParams(room, remoteEventId);
+    if (exclusive) {
+      await this.bridge.removeAllReactions(sendParams, remoteEventId);
     }
+    await this.bridge.sendReaction(sendParams, remoteEventId, reaction);
   }
 
   public async handleMatrixFile(
@@ -543,6 +511,7 @@ export class Oicq {
     );
     this.bridge.sendStatusMessage(puppetId, e.url);
   }
+
   // Util
   getOicqClientByRoom(room: IRemoteRoom): Client {
     return this.puppets[room.puppetId]?.client;
@@ -558,6 +527,26 @@ export class Oicq {
         getOicqIdFromRoomId(room.roomId)
       );
     }
+  }
+
+  // 如果对群使用，则消息来源是群主
+  async getAdaptiveSendParams(
+    room: IRemoteRoom,
+    remoteEventId: string
+  ): Promise<IReceiveParams> {
+    const entity = this.getOicqEntityByRoom(room);
+    return isPrivateChat(room.roomId)
+      ? this.getPrivateMessageSendParams(
+          room.puppetId,
+          entity as Friend,
+          remoteEventId
+        )
+      : this.getGroupMessageSendParams(
+          room.puppetId,
+          entity as Group,
+          (await getGroupOwner(entity as Group)) as Member,
+          remoteEventId
+        );
   }
   getOicqPasswordByPuppetId(puppetId: number) {
     return this.bridge.config["oicq"][this.puppets[puppetId].data.oicqId][
