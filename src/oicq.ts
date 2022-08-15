@@ -313,11 +313,8 @@ export class Oicq {
     matrixEventId: string,
     msg: Sendable
   ) {
-    const remoteEventId = await this.sendConstructedOicqMessage(
-      this.getOicqClientByRoom(remoteRoom),
-      remoteRoom.roomId,
-      msg
-    );
+    const target = this.getOicqEntityByRoom(remoteRoom);
+    const remoteEventId = await this.sendConstructedOicqMessage(target, msg);
     // 插入事件到存储，方便后续Reply和Reactions
     await this.bridge.eventStore.insert(
       remoteRoom.puppetId,
@@ -325,6 +322,21 @@ export class Oicq {
       matrixEventId,
       remoteEventId
     );
+    const sendParams = isPrivateChat(remoteRoom.roomId)
+      ? this.getPrivateMessageSendParams(
+          remoteRoom.puppetId,
+          target as Friend,
+          remoteEventId
+        )
+      : this.getGroupMessageSendParams(
+          remoteRoom.puppetId,
+          target as Group,
+          (await getGroupOwner(target as Group)) as Member,
+          remoteEventId
+        );
+    // 已阅标记代表已发送
+    this.bridge.sendReadReceipt(sendParams);
+
     if (remoteEventId.startsWith("err")) {
       // 消息发送失败，打个标记
       await this.markMessage(remoteRoom, remoteEventId, "发送失败");
@@ -332,19 +344,11 @@ export class Oicq {
   }
 
   public async sendConstructedOicqMessage(
-    client: Client,
-    remoteRoomId: string,
+    target: Friend | Group,
     msg: Sendable
   ): Promise<string> {
     try {
-      const isDirect = isPrivateChat(remoteRoomId);
-      if (isDirect) {
-        let f = client.pickFriend(getOicqIdFromRoomId(remoteRoomId));
-        return (await f.sendMsg(msg)).message_id;
-      } else {
-        let g = client.pickGroup(getOicqIdFromRoomId(remoteRoomId));
-        return (await g.sendMsg(msg)).message_id;
-      }
+      return (await target.sendMsg(msg)).message_id;
     } catch (e) {
       // 由于消息发送失败，没有remoteId可以用
       // 所以生成一个ID供Reaction使用
@@ -543,15 +547,16 @@ export class Oicq {
   getOicqClientByRoom(room: IRemoteRoom): Client {
     return this.puppets[room.puppetId]?.client;
   }
-  getFriendByRoom(room: IRemoteRoom): Friend | undefined {
+  getOicqEntityByRoom(room: IRemoteRoom): Friend | Group {
     const isDirect = isPrivateChat(room.roomId);
     if (isDirect) {
       return this.getOicqClientByRoom(room).pickFriend(
         getOicqIdFromRoomId(room.roomId)
       );
     } else {
-      log.error("对非私聊使用getFriendByRoom");
-      return;
+      return this.getOicqClientByRoom(room).pickGroup(
+        getOicqIdFromRoomId(room.roomId)
+      );
     }
   }
   getOicqPasswordByPuppetId(puppetId: number) {
