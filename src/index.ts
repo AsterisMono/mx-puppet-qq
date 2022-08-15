@@ -1,15 +1,12 @@
 import {
   PuppetBridge,
-  IPuppetBridgeRegOpts,
   Log,
   IRetData,
-  Util,
   IProtocolInformation,
 } from "mx-puppet-bridge";
 import * as commandLineArgs from "command-line-args";
 import * as commandLineUsage from "command-line-usage";
 import { Oicq } from "./oicq";
-import { Client, createClient } from "oicq";
 
 // 日志模组
 const log = new Log("oicqPuppet:index");
@@ -116,56 +113,33 @@ async function run() {
     if (!str) {
       return {
         success: false,
-        error: `使用方法: link <oicq_id> <password>`,
+        error: `使用方法: link <qq号> <link密码>`,
       };
     }
-    let [oicqId, password] = str.split(" ", 2);
-
-    const client = createClient(parseInt(oicqId));
-
-    return new Promise((resolve) => {
-      let successResolve = resolve;
-      // 成功登录的情况
-      client.on("system.online", function () {
-        resolve({
+    log.info(str);
+    if (str.startsWith("token")) {
+      // Token注册流程
+      const [link_token, puppetId, token] = str.split(" ", 2);
+      oicq.handleTokenRegister(parseInt(puppetId), token);
+    }
+    try {
+      const [tryLinkId, tryLinkPwd] = str.split(" ", 2);
+      if (tryLinkPwd === puppet.config["oicq"][tryLinkId]["link_password"]) {
+        return {
           success: true,
           data: {
-            oicqId: oicqId,
+            oicqId: tryLinkId,
           },
-        });
-      });
-
-      // 需要Token登录的情况
-      client.on("system.login.slider", function (e) {
-        resolve({
-          success: false,
-          error: `获取地址为${e.url}，请输入ticket`,
-          fn: async (ticket) => {
-            return new Promise((resolve) => {
-              client.submitSlider(String(ticket).trim());
-              successResolve = resolve;
-            });
-          },
-        });
-      });
-
-      client.on("system.login.qrcode", function (e) {
-        resolve({
-          success: false,
-          error: `会话过期！暂不支持扫码登录，请使用link <oicq_id> <password>密码登录`,
-        });
-      });
-
-      // 登录失败的情况
-      client.on("system.login.error", function (e) {
-        resolve({
-          success: false,
-          error: e.message,
-        });
-      });
-
-      client.login(password);
-    });
+        };
+      } else {
+        throw new Error("wrong_password");
+      }
+    } catch (e) {
+      return {
+        success: false,
+        error: "QQ号未正确配置或link密码不正确！",
+      };
+    }
   });
   // 必选功能：设置机器人的昵称
   puppet.setBotHeaderMsgHook((): string => {

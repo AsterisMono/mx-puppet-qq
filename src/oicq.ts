@@ -140,9 +140,9 @@ export class Oicq {
       client,
       data,
     };
-    // 这里我们姑且认为Session一定有效，直接登录
+    // 获取密码，执行登录过程
+    const password: string = this.getOicqPasswordByPuppetId(puppetId);
     try {
-      await client.login();
       // TODO: 挂载消息hook
       client.on("message", (e) => {
         this.handleOicqMessage(puppetId, e);
@@ -156,6 +156,30 @@ export class Oicq {
       client.on("notice.group.recall", (e) => {
         this.handleGroupRedactedMessage(puppetId, e);
       });
+      client.on("system.login.qrcode", (e) => {
+        this.handleQRCodeRequest(puppetId, e);
+      });
+      client.on("system.login.slider", (e) => {
+        this.handleTokenRequest(puppetId, e);
+      });
+      client.on("system.login.error", (e) => {
+        this.bridge.sendStatusMessage(puppetId, `登录错误！${e.message}`);
+      });
+      client.on("system.offline", (e) => {
+        this.bridge.sendStatusMessage(
+          puppetId,
+          `掉线了，正在重新连接...原因：${e.message}`
+        );
+      });
+      client.on("system.login.device", (e) => {
+        this.handleDeviceLock(puppetId, e);
+      });
+      client.on("system.online", (e) => {
+        this.bridge.sendStatusMessage(puppetId, "已经上线！");
+      });
+
+      await client.login(password);
+
       // FIXME：这个是否真的起作用？
       log.info(`登录Puppet的Remote ID: ${client.uin}`);
       this.bridge.setUserId(puppetId, client.uin.toString());
@@ -469,6 +493,52 @@ export class Oicq {
     // now we just return the userId of the ghost
     return user.userId;
   }
+
+  public async handleQRCodeRequest(puppetId: number, e: { image: Buffer }) {
+    this.bridge.sendStatusMessage(
+      puppetId,
+      "暂不支持QR码登录，请正确配置你的QQ号和密码..."
+    );
+    // TODO: 重新获取Token
+  }
+
+  public async handleTokenRequest(puppetId: number, e: { url: string }) {
+    const tokenMessage =
+      "收到滑动验证码提示后，可使用 https://github.com/mzdluo123/TxCaptchaHelper 协助获取ticket；也可用PC浏览器滑动，从开发者工具网络请求cap_union_new_verity中得到ticket";
+    await this.bridge.sendStatusMessage(
+      puppetId,
+      `访问下面的网址进行滑动验证：`
+    );
+    await this.bridge.sendStatusMessage(puppetId, e.url);
+    await this.bridge.sendStatusMessage(puppetId, tokenMessage);
+    await this.bridge.sendStatusMessage(
+      puppetId,
+      `验证完成后，请在这里输入link token ${puppetId} <token>`
+    );
+  }
+
+  public async handleTokenRegister(puppetId: number, token: string) {
+    const p = this.puppets[puppetId];
+    if (!p) {
+      return null;
+    }
+    try {
+      p.client.submitSlider(token);
+    } catch (e) {
+      this.bridge.sendStatusMessage(puppetId, `Token验证过程中出现异常：${e}`);
+    }
+  }
+
+  public async handleDeviceLock(
+    puppetId: number,
+    e: { url: string; phone: string }
+  ) {
+    await this.bridge.sendStatusMessage(
+      puppetId,
+      `检测到设备锁（手机号${e.phone}）！请访问下面的网址进行登录：`
+    );
+    this.bridge.sendStatusMessage(puppetId, e.url);
+  }
   // Util
   getOicqClientByRoom(room: IRemoteRoom): Client {
     return this.puppets[room.puppetId]?.client;
@@ -483,5 +553,10 @@ export class Oicq {
       log.error("对非私聊使用getFriendByRoom");
       return;
     }
+  }
+  getOicqPasswordByPuppetId(puppetId: number) {
+    return this.bridge.config["oicq"][this.puppets[puppetId].data.oicqId][
+      "password"
+    ];
   }
 }
