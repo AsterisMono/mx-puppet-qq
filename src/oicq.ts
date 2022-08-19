@@ -180,6 +180,9 @@ export class Oicq {
       client.on("system.online", (e) => {
         this.bridge.sendStatusMessage(puppetId, "已经上线！");
       });
+      client.on("internal.input", (e) => {
+        this.handleUserTyping(puppetId, e);
+      });
 
       await client.login(password);
 
@@ -528,6 +531,22 @@ export class Oicq {
       `检测到设备锁（手机号${e.phone}）！请访问下面的网址进行登录：`
     );
     this.bridge.sendStatusMessage(puppetId, e.url);
+  }
+
+  public async handleUserTyping(
+    puppetId: number,
+    e: { user_id: number; end: boolean }
+  ) {
+    const p = this.puppets[puppetId];
+    if (!p) {
+      return null;
+    }
+    const sendParams = this.getPrivateMessageSendParams(
+      puppetId,
+      p.client.pickFriend(e.user_id),
+      `typing${makeid(16)}`
+    );
+    await this.bridge.setUserTyping(sendParams, !e.end);
   }
 
   // Util
