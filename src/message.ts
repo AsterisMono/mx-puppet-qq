@@ -1,6 +1,9 @@
 import { IReceiveParams, Log, PuppetBridge } from "mx-puppet-bridge";
 import { GroupMessageEvent, parseDmMessageId, PrivateMessageEvent } from "oicq";
 import { genDmMessageId } from "oicq/lib/message";
+import { silkToOgg } from "./audio";
+import { downloadTempFile, makeid } from "./utils";
+import { readFileSync } from "fs";
 
 const log = new Log("oicqPuppet:messageParser");
 
@@ -10,6 +13,7 @@ export async function parseOicqMessage(
   bridge: PuppetBridge,
   sendParams: IReceiveParams
 ) {
+  // console.log(messageEvent);
   const messageChain = messageEvent.message;
   const source = (messageEvent as PrivateMessageEvent).friend || undefined;
   // 处理回复
@@ -63,6 +67,17 @@ export async function parseOicqMessage(
         break;
       case "at":
         buffer = buffer.concat(message.text as string);
+        break;
+      case "record":
+        // 语音消息：下载-转换-发送
+        const silkPath = await downloadTempFile(
+          message.url as string,
+          message.md5 || `unknownSilk${makeid(16)}`,
+          "audio/silk"
+        ); // TODO: Hardcoded path
+        const oggPath = await silkToOgg(silkPath);
+        const oggBuffer: Buffer = readFileSync(oggPath);
+        await bridge.sendAudio(sendParams, oggBuffer, "语音消息");
         break;
       default:
         await bridge.sendMessage(sendParams, {

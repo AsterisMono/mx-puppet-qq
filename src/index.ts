@@ -50,6 +50,7 @@ const protocol: IProtocolInformation = {
   features: {
     image: true, // 支持发送图片
     file: true, // 支持发送文件
+    audio: true,
     presence: false, // 支持用户在线状态
   },
   id: "oicq", // 协议ID（全小写）
@@ -96,6 +97,8 @@ async function run() {
   puppet.on("file", oicq.handleMatrixFile.bind(oicq));
   // 可选功能：发送图片
   puppet.on("image", oicq.handleMatrixImage.bind(oicq));
+  // 可选功能：发送语音
+  puppet.on("audio", oicq.handleMatrixAudio.bind(oicq));
   // 可选功能：发起会话 (在Matrix一方发起私聊时需要)
   puppet.setCreateRoomHook(oicq.createRoom.bind(oicq));
   // 可选功能: get DM room ID hook (在Matrix一方发起私聊时需要)

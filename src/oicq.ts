@@ -376,8 +376,32 @@ export class Oicq {
       return;
     }
     // 下载临时文件
-    const path = await downloadTempFile(data.url, data.filename);
+    const path = await downloadTempFile(data.url, data.filename, "files");
     this.deliverOicqFile(room, data.eventId as string, path, data.filename);
+  }
+
+  public async handleMatrixAudio(
+    room: IRemoteRoom,
+    data: IFileEvent,
+    event: any
+  ) {
+    const p = this.puppets[room.puppetId];
+    if (!p) {
+      return;
+    }
+    console.log(data);
+    /*
+      {
+        filename: 'Voice message',
+        mxc: 'mxc://localtest.me/RrxtppHigaTjCUxNMUslWEJK',
+        url: 'http://localtest.me:8008/_matrix/media/r0/download/localtest.me/RrxtppHigaTjCUxNMUslWEJK',
+        eventId: '$q0jvu2Eu72SW6xIMl7KYpUuerqlYKdw2OjPxhft_PHo',
+        type: 'audio',
+        info: { duration: 3680, mimetype: 'audio/ogg', size: 8968 }
+      }
+    */
+    const path = downloadTempFile(data.url, data.eventId as string, "audio");
+    // 将ogg格式转换为silk编码
   }
 
   public updateFileProgress(

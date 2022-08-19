@@ -15,14 +15,15 @@ export function getOicqIdFromRoomId(remoteRoomId: string): number {
 
 export async function downloadTempFile(
   url: string,
-  filename: string
+  filename: string,
+  subfolder: string
 ): Promise<string> {
-  const dir = resolvePath(process.cwd(), `tmp/files/`);
+  const dir = resolvePath(process.cwd(), `tmp/${subfolder}/`);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
   return new Promise((resolve, reject) => {
-    const path = resolvePath(process.cwd(), `tmp/files/${filename}`);
+    const path = resolvePath(process.cwd(), `tmp/${subfolder}/${filename}`);
     const filePath = createWriteStream(path);
     fetch(url).then((res) => {
       res.body?.pipe(filePath);
