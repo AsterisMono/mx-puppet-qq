@@ -81,7 +81,7 @@ export async function parseOicqMessage(
         break;
       default:
         await bridge.sendMessage(sendParams, {
-          body: "暂不支持的消息",
+          body: messageEvent.raw_message,
         });
         break;
     }
