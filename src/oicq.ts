@@ -1,3 +1,4 @@
+import { readFileSync } from "fs";
 import {
   PuppetBridge,
   IRemoteUser,
@@ -23,6 +24,7 @@ import {
   segment,
   Sendable,
 } from "oicq";
+import { oggToSilk } from "./audio";
 import { parseOicqMessage } from "./message";
 import {
   debounce,
@@ -390,18 +392,18 @@ export class Oicq {
       return;
     }
     console.log(data);
-    /*
-      {
-        filename: 'Voice message',
-        mxc: 'mxc://localtest.me/RrxtppHigaTjCUxNMUslWEJK',
-        url: 'http://localtest.me:8008/_matrix/media/r0/download/localtest.me/RrxtppHigaTjCUxNMUslWEJK',
-        eventId: '$q0jvu2Eu72SW6xIMl7KYpUuerqlYKdw2OjPxhft_PHo',
-        type: 'audio',
-        info: { duration: 3680, mimetype: 'audio/ogg', size: 8968 }
-      }
-    */
-    const path = downloadTempFile(data.url, data.eventId as string, "audio");
+    const escapedEventId = data.eventId?.substring(1);
+    const oggPath = await downloadTempFile(
+      data.url,
+      `${escapedEventId}.ogg`,
+      "audio/ogg"
+    );
+    console.log("OGGPATH: ", oggPath);
     // 将ogg格式转换为silk编码
+    const silkPath = await oggToSilk(oggPath);
+    const silkBuffer: Buffer = readFileSync(silkPath);
+    const message = [segment.record(silkBuffer)];
+    this.deliverOicqMessage(room, data.eventId as string, message);
   }
 
   public updateFileProgress(
